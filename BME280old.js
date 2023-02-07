@@ -55,48 +55,48 @@ class BME280 {
   }
 
   async _i2cWriteByte(cmd, byte) {
-    //try {
+    try {
       const i2c1 = await i2c.openPromisified(1);
       await i2c1.writeByte(this.i2cAddress, cmd, byte);
       await i2c1.close();
       return;
-    //} catch (err) {
-    //  console.error(err);
-    //}
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async _i2cReadByte(cmd) {
-    //try {
+    try {
       const i2c1 = await i2c.openPromisified(1);
       const result = await i2c1.readByte(this.i2cAddress, cmd);
       await i2c1.close();
       return result;
-    //} catch (err) {
-    //  console.error(err);
-    //}
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async _i2cReadI2cBlock(cmd, length) {
     let buf = Buffer.alloc(length)
-    //try {
+    try {
       const i2c1 = await i2c.openPromisified(1);
       await i2c1.readI2cBlock(this.i2cAddress, cmd, length, buf);
       await i2c1.close();
       return buf;
-    //} catch (err) {
-    //  console.error(err);
-    //}
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async _i2cReadWord(cmd) {
-    //try {
+    try {
       const i2c1 = await i2c.openPromisified(1);
       const result = await i2c1.readWord(this.i2cAddress, cmd);
       await i2c1.close();
       return result;
-    //} catch (err) {
-    //  console.error(err);
-    //}
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   /* 
@@ -111,7 +111,7 @@ class BME280 {
   
 
   async init() {
-    //try {
+    try {
       await this._i2cWriteByte(this.REGISTER_CHIPID, 0);
       const chipId = await this._i2cReadByte(this.REGISTER_CHIPID);
       if (chipId !== BME280.CHIP_ID_BME280() &&
@@ -125,9 +125,9 @@ class BME280 {
       await this._i2cWriteByte(this.REGISTER_CONTROL_HUM, 0b00000101);
       await this._i2cWriteByte(this.REGISTER_CONTROL, 0b10110111);
       return chipId;
-    //} catch (err) {
-    //  console.error(err);
-    //}
+    } catch (err) {
+      console.error(err);
+    }
 
     /*
     return new Promise((resolve, reject) => {
@@ -214,7 +214,7 @@ class BME280 {
   */
 
   async readSensorData() {
-    //try {
+    try {
       if (!this.cal) throw new Error('You must first call bme280.init()');
       // Grab temperature, humidity, and pressure in a single read
       let buffer = await this._i2cReadI2cBlock(this.REGISTER_PRESSURE_DATA, 8);
@@ -266,9 +266,9 @@ class BME280 {
         pressure_hPa  : pressure_hPa
       };
 
-    //} catch (err) {
-    //  console.error(err);
-    //}
+    } catch (err) {
+      console.error(err);
+    }
 
     /*
     return new Promise((resolve, reject) => {
@@ -336,7 +336,7 @@ class BME280 {
 
 
   async _loadCalibration() {
-    //try {
+    try {
       let buffer = await this._i2cReadI2cBlock(this.REGISTER_DIG_T1, 24);
       let h1   = await this._i2cReadByte(this.REGISTER_DIG_H1);
       let h2   = await this._i2cReadWord(this.REGISTER_DIG_H2);
@@ -369,9 +369,9 @@ class BME280 {
         dig_H6: h6
       };
       return;
-    //} catch (err) {
-    //  console.error(err);
-    //}
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   loadCalibration(callback) {
@@ -480,4 +480,4 @@ class BME280 {
 
 }
 
-module.exports = BME280;
+//module.exports = BME280;
