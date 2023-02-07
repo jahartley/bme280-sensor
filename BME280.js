@@ -15,8 +15,7 @@ class BME280 {
   constructor(options) {
     
 
-    this.i2cBusNo = (options && options.hasOwnProperty('i2cBusNo')) ? options.i2cBusNo : 1;    
-    this.i2cBus = i2c.openSync(this.i2cBusNo);
+    this.i2cBusNo = (options && options.hasOwnProperty('i2cBusNo')) ? options.i2cBusNo : 1;
     this.i2cAddress = (options && options.hasOwnProperty('i2cAddress')) ? options.i2cAddress : BME280.BME280_DEFAULT_I2C_ADDRESS();
 
     this.I2C_ADDRESS_B   = 0x76;
@@ -56,7 +55,7 @@ class BME280 {
 
   async _i2cWriteByte(cmd, byte) {
     //try {
-      const i2c1 = await i2c.openPromisified(1);
+      const i2c1 = await i2c.openPromisified(this.i2cBusNo);
       await i2c1.writeByte(this.i2cAddress, cmd, byte);
       await i2c1.close();
       return;
@@ -67,7 +66,7 @@ class BME280 {
 
   async _i2cReadByte(cmd) {
     //try {
-      const i2c1 = await i2c.openPromisified(1);
+      const i2c1 = await i2c.openPromisified(this.i2cBusNo);
       const result = await i2c1.readByte(this.i2cAddress, cmd);
       await i2c1.close();
       return result;
@@ -79,7 +78,7 @@ class BME280 {
   async _i2cReadI2cBlock(cmd, length) {
     let buf = Buffer.alloc(length)
     //try {
-      const i2c1 = await i2c.openPromisified(1);
+      const i2c1 = await i2c.openPromisified(this.i2cBusNo);
       await i2c1.readI2cBlock(this.i2cAddress, cmd, length, buf);
       await i2c1.close();
       return buf;
@@ -90,7 +89,7 @@ class BME280 {
 
   async _i2cReadWord(cmd) {
     //try {
-      const i2c1 = await i2c.openPromisified(1);
+      const i2c1 = await i2c.openPromisified(this.i2cBusNo);
       const result = await i2c1.readWord(this.i2cAddress, cmd);
       await i2c1.close();
       return result;
