@@ -72,6 +72,12 @@ data = {
   "pressure_inHg": 29.852410107059583
 }
 ```
+
+##Helper Functions:
+calculateHeatIndexCelcius(temperature_C, humidity)
+calculateDewPointCelcius(temperature_C, humidity)
+
+
 ##Example Wiring
 
 For I2C setup on a Raspberry Pi, take a look at my [pi-weather-station](https://github.com/skylarstein/pi-weather-station) project.

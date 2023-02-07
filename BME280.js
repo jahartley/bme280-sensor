@@ -8,10 +8,12 @@
 
 'use strict';
 
+const i2c = require('i2c-bus');
+
 class BME280 {
 
   constructor(options) {
-    const i2c = require('i2c-bus');
+    
 
     this.i2cBusNo = (options && options.hasOwnProperty('i2cBusNo')) ? options.i2cBusNo : 1;    
     this.i2cBus = i2c.openSync(this.i2cBusNo);
@@ -52,7 +54,100 @@ class BME280 {
     this.REGISTER_HUMIDITY_DATA = 0xFD;
   }
 
-  init() {
+  async _i2cWriteByte(cmd, byte) {
+    try {
+      const i2c1 = await i2c.openPromisified(1);
+      await i2c1.writeByte(this.i2cAddress, cmd, byte);
+      await i2c1.close();
+      return;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async _i2cReadByte(cmd) {
+    try {
+      const i2c1 = await i2c.openPromisified(1);
+      const result = await i2c1.readByte(this.i2cAddress, cmd);
+      await i2c1.close();
+      return result;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async _i2cReadI2cBlock(cmd, length) {
+    let buf = Buffer.alloc(length)
+    try {
+      const i2c1 = await i2c.openPromisified(1);
+      await i2c1.readI2cBlock(this.i2cAddress, cmd, length, buf);
+      await i2c1.close();
+      return buf;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async _i2cReadWord(cmd) {
+    try {
+      const i2c1 = await i2c.openPromisified(1);
+      const result = await i2c1.readWord(this.i2cAddress, cmd);
+      await i2c1.close();
+      return result;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  /* 
+    try {
+
+    } catch (err) {
+      console.error(err);
+    }
+  
+  */
+
+  
+
+  async init() {
+    try {
+      await this._i2cWriteByte(this.REGISTER_CHIPID, 0);
+      const chipId = await this._i2cReadByte(this.REGISTER_CHIPID);
+      if (chipId !== BME280.CHIP_ID_BME280() &&
+          chipId !== BME280.CHIP_ID1_BMP280() &&
+          chipId !== BME280.CHIP_ID2_BMP280() &&
+          chipId !== BME280.CHIP_ID3_BMP280()) {
+        throw new Error(`Unexpected BMx280 chip ID: 0x${chipId.toString(16)}`);
+      }
+      console.log(`Found BMx280 chip ID 0x${chipId.toString(16)} on bus i2c-${this.i2cBusNo}, address 0x${this.i2cAddress.toString(16)}`);
+      await this._loadCalibration();
+      await this._i2cWriteByte(this.REGISTER_CONTROL_HUM, 0b00000101);
+      await this._i2cWriteByte(this.REGISTER_CONTROL, 0b10110111);
+      return chipId;
+    } catch (err) {
+      console.error(err);
+    }
+
+    /*
+    return new Promise((resolve, reject) => {
+      this._i2cWriteByte(this.REGISTER_CHIPID, 0).
+        then(() => this._i2cReadByte(this.REGISTER_CHIPID)).
+        then((chipId) => {
+          if (chipId !== BME280.CHIP_ID_BME280() &&
+              chipId !== BME280.CHIP_ID1_BMP280() &&
+              chipId !== BME280.CHIP_ID2_BMP280() &&
+              chipId !== BME280.CHIP_ID3_BMP280()) {
+            return reject(`Unexpected BMx280 chip ID: 0x${chipId.toString(16)}`);
+          }
+          console.log(`Found BMx280 chip ID 0x${chipId.toString(16)} on bus i2c-${this.i2cBusNo}, address 0x${this.i2cAddress.toString(16)}`);
+          return;}).
+        then(this._loadCalibration).
+        then(() => this._i2cWriteByte(this.REGISTER_CONTROL_HUM, 0b00000101)).
+        then(() => this._i2cWriteByte(this.REGISTER_CONTROL, 0b10110111)).
+        then(() => resolve()).catch(console.error);
+    }); */
+    /*
     return new Promise((resolve, reject) => {
       this.i2cBus.writeByte(this.i2cAddress, this.REGISTER_CHIPID, 0, (err) => {
         if(err) {
@@ -95,12 +190,19 @@ class BME280 {
         });
       });
     });
+    */
   }
 
   // reset()
   //
   // Perform a power-on reset procedure. You will need to call init() following a reset()
   //
+  reset() {
+    const POWER_ON_RESET_CMD = 0xB6;
+    return this._i2cWriteByte(this.REGISTER_RESET, POWER_ON_RESET_CMD).catch(console.error);
+  }
+
+  /*
   reset() {
     return new Promise((resolve, reject) => {
       const POWER_ON_RESET_CMD = 0xB6;
@@ -109,8 +211,66 @@ class BME280 {
       });
     });
   }
+  */
 
-  readSensorData() {
+  async readSensorData() {
+    try {
+      if (!this.cal) throw new Error('You must first call bme280.init()');
+      // Grab temperature, humidity, and pressure in a single read
+      let buffer = await this._i2cReadI2cBlock(this.REGISTER_PRESSURE_DATA, 8);
+      // Temperature (temperature first since we need t_fine for pressure and humidity)
+      //
+      let adc_T = BME280.uint20(buffer[3], buffer[4], buffer[5]);
+      let tvar1 = ((((adc_T >> 3) - (this.cal.dig_T1 << 1))) * this.cal.dig_T2) >> 11;
+      let tvar2  = (((((adc_T >> 4) - this.cal.dig_T1) * ((adc_T >> 4) - this.cal.dig_T1)) >> 12) * this.cal.dig_T3) >> 14;
+      let t_fine = tvar1 + tvar2;
+
+      let temperature_C = ((t_fine * 5 + 128) >> 8) / 100;
+
+      // Pressure
+      //
+      let adc_P = BME280.uint20(buffer[0], buffer[1], buffer[2]);
+      let pvar1 = t_fine / 2 - 64000;
+      let pvar2 = pvar1 * pvar1 * this.cal.dig_P6 / 32768;
+      pvar2 = pvar2 + pvar1 * this.cal.dig_P5 * 2;
+      pvar2 = pvar2 / 4 + this.cal.dig_P4 * 65536;
+      pvar1 = (this.cal.dig_P3 * pvar1 * pvar1 / 524288 + this.cal.dig_P2 * pvar1) / 524288;
+      pvar1 = (1 + pvar1 / 32768) * this.cal.dig_P1;
+
+      let pressure_hPa = 0;
+
+      if(pvar1 !== 0) {
+        let p = 1048576 - adc_P;
+        p = ((p - pvar2 / 4096) * 6250) / pvar1;
+        pvar1 = this.cal.dig_P9 * p * p / 2147483648;
+        pvar2 = p * this.cal.dig_P8 / 32768;
+        p = p + (pvar1 + pvar2 + this.cal.dig_P7) / 16;
+
+        pressure_hPa = p / 100;
+      }
+
+      // Humidity (available on the BME280, will be zero on the BMP280 since it has no humidity sensor)
+      //
+      let adc_H = BME280.uint16(buffer[6], buffer[7]);
+
+      let h = t_fine - 76800;
+      h = (adc_H - (this.cal.dig_H4 * 64 + this.cal.dig_H5 / 16384 * h)) *
+          (this.cal.dig_H2 / 65536 * (1 + this.cal.dig_H6 / 67108864 * h * (1 + this.cal.dig_H3 / 67108864 * h)));
+      h = h * (1 - this.cal.dig_H1 * h / 524288);
+
+      let humidity = (h > 100) ? 100 : (h < 0 ? 0 : h);
+
+      return {
+        temperature_C : temperature_C,
+        humidity      : humidity,
+        pressure_hPa  : pressure_hPa
+      };
+
+    } catch (err) {
+      console.error(err);
+    }
+
+    /*
     return new Promise((resolve, reject) => {
       if(!this.cal) {
         return reject('You must first call bme280.init()');
@@ -171,7 +331,47 @@ class BME280 {
           pressure_hPa  : pressure_hPa
         });
       });
-    });
+    }); */
+  }
+
+
+  async _loadCalibration() {
+    try {
+      let buffer = await this._i2cReadI2cBlock(this.REGISTER_DIG_T1, 24);
+      let h1   = await this._i2cReadByte(this.REGISTER_DIG_H1);
+      let h2   = await this._i2cReadWord(this.REGISTER_DIG_H2);
+      let h3   = await this._i2cReadByte(this.REGISTER_DIG_H3);
+      let h4   = await this._i2cReadByte(this.REGISTER_DIG_H4);
+      let h5   = await this._i2cReadByte(this.REGISTER_DIG_H5);
+      let h5_1 = await this._i2cReadByte(this.REGISTER_DIG_H5 + 1);
+      let h6   = await this._i2cReadByte(this.REGISTER_DIG_H6);
+
+      this.cal = {
+        dig_T1: BME280.uint16(buffer[1], buffer[0]),
+        dig_T2: BME280.int16(buffer[3], buffer[2]),
+        dig_T3: BME280.int16(buffer[5], buffer[4]),
+
+        dig_P1: BME280.uint16(buffer[7], buffer[6]),
+        dig_P2: BME280.int16(buffer[9], buffer[8]),
+        dig_P3: BME280.int16(buffer[11], buffer[10]),
+        dig_P4: BME280.int16(buffer[13], buffer[12]),
+        dig_P5: BME280.int16(buffer[15], buffer[14]),
+        dig_P6: BME280.int16(buffer[17], buffer[16]),
+        dig_P7: BME280.int16(buffer[19], buffer[18]),
+        dig_P8: BME280.int16(buffer[21], buffer[20]),
+        dig_P9: BME280.int16(buffer[23], buffer[22]),
+
+        dig_H1: h1,
+        dig_H2: h2,
+        dig_H3: h3,
+        dig_H4: (h4 << 4) | (h5 & 0xF),
+        dig_H5: (h5_1 << 4) | (h5 >> 4),
+        dig_H6: h6
+      };
+      return;
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   loadCalibration(callback) {
